@@ -1,4 +1,4 @@
-pragma solidity ^0.4.25;
+pragma solidity ^0.4.24;
 
 import "../node_modules/openzeppelin-solidity/contracts/math/SafeMath.sol";
 
@@ -11,18 +11,65 @@ contract FlightSuretyData {
 
     address private contractOwner;                                      // Account used to deploy contract
     bool private operational = true;                                    // Blocks all state changes throughout the contract if false
+    mapping(address => uint256) private authorizedContracts;
+
+    struct Airline {
+        address airlineAddress;
+        bool isRegistered;
+        string name;
+        bool funded;
+        uint256 votes;
+    }
+
+    mapping(address => Airline) private airlines;
+    address[] registeredAirlines = new address[](0);
+
+    struct Flight {
+        bool isRegistered;
+        uint8 statusCode;
+        uint256 updatedTimestamp;
+        address airline;
+        string flight;
+    }
+
+    mapping(bytes32 => Flight) private flights;
+    bytes32[] registeredFlights = new bytes32[](0);
+
+    struct Insurance {
+        address passenger;
+        uint256 cost;
+        uint256 payoutAmount;
+        bool isCredited;
+    }
+    mapping (bytes32 => Insurance[]) insuredPassengersOnFlight;
+    mapping (address => uint256) public creditedPassengers; //credits for insurance
+    mapping (address => bool) private whitelistedAddresses;
 
     /********************************************************************************************/
     /*                                       EVENT DEFINITIONS                                  */
     /********************************************************************************************/
 
+    event AirlineRegistered(string name, address addr);
+    event InsurancePurchased(address airline, string flight, uint256 timestamp, address passenger, uint256 amount);
+    event PassengerCredited(address passenger, uint256 amount);
+    event CreditsWithdrawn(uint256 amount, address passenger);
+    event FlightRegistered(bytes32 flightKey, address airlineAddress, string flight, uint256 updatedTimestamp);
+    event FlightStatusUpdated(address airline, string flight, uint256 timestamp, uint8 statusCode);
 
     /**
     * @dev Constructor
     *      The deploying account becomes contractOwner
     */
-    constructor() public {
+    constructor(string airlineName, address airlineAddress) public {
         contractOwner = msg.sender;
+        airlines[airlineAddress] = Airline({
+            airlineAddress: airlineAddress,
+            isRegistered: true,
+            name: airlineName,
+            funded: false,
+            votes: 0
+        });
+        registeredAirlines.push(airlineAddress);
     }
 
     /********************************************************************************************/
@@ -50,6 +97,41 @@ contract FlightSuretyData {
         _;
     }
 
+    modifier airlineNotRegistered(address airline) {
+        require(!airlines[airline].isRegistered, "Airline already registered");
+        _;
+    }
+
+    modifier validAddress(address addr) {
+        require(addr != address(0), "Invalid address");
+        _;
+    }
+
+    modifier hasFundedEnough(){
+        require(msg.value >= 1 ether, "1 eth required to register");
+        _;
+    }
+
+    modifier tooMuchInsurance() {
+        require(msg.value < 5 ether, "Payment exceeds insurance limit");
+        _;
+    }
+
+    modifier messageValueGreaterThanZero(){
+        require(msg.value > 0);
+        _;
+    }
+
+    modifier passengerHasCredits(address passenger){
+        require(creditedPassengers[passenger] > 0);
+        _;
+    }
+
+    modifier requireWhitelistedAddress(){
+        require(whitelistedAddresses[msg.sender] = true);
+        _;
+    }
+
     /********************************************************************************************/
     /*                                       UTILITY FUNCTIONS                                  */
     /********************************************************************************************/
@@ -63,14 +145,21 @@ contract FlightSuretyData {
         return operational;
     }
 
-
-    /**
-    * @dev Sets contract operations on/off
-    *
-    * When operational mode is disabled, all write transactions except for this one will fail
-    */
-    function setOperatingStatus(bool mode) external requireContractOwner {
+    function setOperationalStatus(bool mode) requireWhitelistedAddress private returns (bool) {
         operational = mode;
+        return operational;
+    }
+
+    function addWhitelistAddress(address addressToAdd) requireContractOwner private {
+        whitelistedAddresses[addressToAdd] = true;
+    }
+
+    function removeWhitelistAddress(address addressToRemove) requireContractOwner private {
+        whitelistedAddresses[addressToRemove] = false;
+    }
+
+    function getRegisteredAirlines() requireIsOperational external view returns(address[]){
+        return registeredAirlines;
     }
 
     /********************************************************************************************/
@@ -80,32 +169,95 @@ contract FlightSuretyData {
    /**
     * @dev Add an airline to the registration queue
     *      Can only be called from FlightSuretyApp contract
-    *
     */
-    function registerAirline() external pure {
+    function registerAirline(string airlineName, address airlineAddress)
+    requireIsOperational airlineNotRegistered(airlineAddress) validAddress(msg.sender) hasFundedEnough external payable returns (bool registered){
+        airlines[airlineAddress] = Airline({
+            airlineAddress: airlineAddress,
+            isRegistered: true,
+            name: airlineName,
+            funded: true,
+            votes: 0
+        });
+        registeredAirlines.push(airlineAddress);
+
+        emit AirlineRegistered(airlineName, airlineAddress);
+        return true;
     }
 
+    function registerFlight(address airlineAddress, uint256 updatedTimestamp, string flight) requireIsOperational public {
+        require(airlineAddress == msg.sender, "Airlines can only register flights for themselves");
+        bytes32 flightKey = getFlightKey(airlineAddress, flight, updatedTimestamp);
+        require(!flights[flightKey].isRegistered, "Flight already registered");
+        flights[flightKey] = Flight({
+            isRegistered: true,
+            statusCode: 0,
+            updatedTimestamp: updatedTimestamp,
+            airline: airlineAddress,
+            flight: flight
+        });
+        registeredFlights.push(flightKey);
 
-   /**
-    * @dev Buy insurance for a flight
+        emit FlightRegistered(flightKey, airlineAddress, flight, updatedTimestamp);
+    }
+
+    function processFlightStatus(address airline, string flight, uint256 timestamp, uint8 statusCode) external requireIsOperational {
+        bytes32 flightKey = getFlightKey(airline, flight, timestamp);
+
+        if (flights[flightKey].statusCode == 0) {
+            flights[flightKey].statusCode = statusCode;
+            if(statusCode == 20) {
+                this.creditPassengers(airline, flight, timestamp);
+            }
+        }
+
+        emit FlightStatusUpdated(airline, flight, timestamp, statusCode);
+    }
+
+    /**
+     * @dev Buy insurance for a flight
     *
     */
-    function buy() external payable {
+    function buy(string flight, uint256 timestamp, address airline, address passenger)
+    requireIsOperational messageValueGreaterThanZero tooMuchInsurance external payable {
+        bytes32 flightKey = getFlightKey(airline, flight, timestamp);
+        uint256 payoutAmount = msg.value.mul(2); //payout is always 100% more
 
+        insuredPassengersOnFlight[flightKey].push(Insurance({
+            passenger: passenger,
+            cost: msg.value,
+            payoutAmount: payoutAmount,
+            isCredited: false
+        }));
+
+        emit InsurancePurchased(airline, flight, timestamp, passenger, payoutAmount);
     }
 
     /**
      *  @dev Credits payouts to insurees
     */
-    function creditInsurees() external pure {
-    }
+    function creditPassengers(address airlineAddress, string flight, uint256 timestamp) external {
+        bytes32 flightKey = getFlightKey(airlineAddress, flight, timestamp);
 
+        for(uint256 i; i<insuredPassengersOnFlight[flightKey].length; i++){
+            Insurance storage insurance = insuredPassengersOnFlight[flightKey][i];
+            if(!insurance.isCredited){
+                insurance.isCredited = true;
+                creditedPassengers[insurance.passenger] += insurance.payoutAmount;
+            }
+            emit PassengerCredited(insurance.passenger, insurance.payoutAmount);
+        }
+    }
 
     /**
      *  @dev Transfers eligible payout funds to insuree
      *
     */
-    function pay() external pure {
+    function pay(address passenger) requireIsOperational passengerHasCredits(passenger) external {
+        uint256 credits = creditedPassengers[passenger];
+        creditedPassengers[passenger] = 0;
+        passenger.transfer(credits);
+        emit CreditsWithdrawn(credits, passenger);
     }
 
    /**
@@ -113,10 +265,11 @@ contract FlightSuretyData {
     *      resulting in insurance payouts, the contract should be self-sustaining
     *
     */
-    function fund() public payable {
+    function fund() public requireIsOperational payable {
+
     }
 
-    function getFlightKey(address airline, string memory flight, uint256 timestamp) pure internal returns(bytes32){
+    function getFlightKey(address airline, string memory flight, uint256 timestamp) internal pure returns(bytes32){
         return keccak256(abi.encodePacked(airline, flight, timestamp));
     }
 
