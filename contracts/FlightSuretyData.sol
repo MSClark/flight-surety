@@ -108,7 +108,7 @@ contract FlightSuretyData {
     }
 
     modifier hasFundedEnough(){
-        require(msg.value >= 1 ether, "1 eth required to register");
+        require(msg.value >= 10 ether, "10 eth required to register airline");
         _;
     }
 
@@ -160,6 +160,10 @@ contract FlightSuretyData {
 
     function getRegisteredAirlines() requireIsOperational external view returns(address[]){
         return registeredAirlines;
+    }
+
+    function isAirlineRegistered(address airlineAddress) requireIsOperational external view returns(bool) {
+        return airlines[airlineAddress].isRegistered;
     }
 
     /********************************************************************************************/

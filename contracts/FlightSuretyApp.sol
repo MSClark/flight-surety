@@ -6,6 +6,8 @@ pragma solidity ^0.4.24;
 
 import "../node_modules/openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "./FlightSuretyData.sol";
+import "./FlightSuretyData.sol";
+import "./FlightSuretyData.sol";
 
 /************************************************** */
 /* FlightSurety Smart Contract                      */
@@ -17,7 +19,7 @@ contract FlightSuretyApp {
     /*                                       DATA VARIABLES                                     */
     /********************************************************************************************/
 
-    // Flight status codees
+    // Flight status codes
     uint8 private constant STATUS_CODE_UNKNOWN = 0;
     uint8 private constant STATUS_CODE_ON_TIME = 10;
     uint8 private constant STATUS_CODE_LATE_AIRLINE = 20;
@@ -28,7 +30,7 @@ contract FlightSuretyApp {
     FlightSuretyData flightSuretyData;
 
     address private contractOwner;          // Account used to deploy contract
-    bool isOperational;
+    bool operational;
 
     mapping(address => address[]) private registeredAirlineMultiCalls;
 
@@ -70,7 +72,7 @@ contract FlightSuretyApp {
     */
     constructor(address dataContract) public {
         contractOwner = msg.sender;
-        isOperational = true;
+        operational = true;
         flightSuretyData = FlightSuretyData(dataContract);
     }
 
@@ -78,7 +80,13 @@ contract FlightSuretyApp {
     /*                                       UTILITY FUNCTIONS                                  */
     /********************************************************************************************/
 
+    function getRegisteredAirlines() public view returns(address[]) {
+        return flightSuretyData.getRegisteredAirlines();
+    }
 
+    function isOperational() public view returns(bool) {
+        return operational;
+    }
 
     /********************************************************************************************/
     /*                                     SMART CONTRACT FUNCTIONS                             */
@@ -94,12 +102,11 @@ contract FlightSuretyApp {
     function registerAirline(string name, address airlineAddress) requireIsOperational external returns (bool success, uint256 votes){
         bool isRegistered = false;
         address[] memory registeredAirlines = flightSuretyData.getRegisteredAirlines();
-        if (registeredAirlines.length < 5) {
+        if (registeredAirlines.length < 5 && flightSuretyData.isAirlineRegistered(msg.sender)) {
             isRegistered = flightSuretyData.registerAirline(name, airlineAddress);
-        } else {
-            if (registeredAirlines.length.div(2) >= votes) { //require multiparty consensus for more than 5 airlines registered
-                isRegistered = flightSuretyData.registerAirline(name, airlineAddress);
-            }
+        } else if (registeredAirlines.length.div(2) >= votes){
+            //require multiparty consensus for more than 5 airlines registered
+            isRegistered = flightSuretyData.registerAirline(name, airlineAddress);
         }
 
         return (isRegistered, 0);
