@@ -11,23 +11,65 @@
 
 <body>
 
-    <nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
-        <a class="navbar-brand" href="#">FlightSurety</a>
-        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarsExampleDefault" aria-controls="navbarsExampleDefault"
-            aria-expanded="false" aria-label="Toggle navigation">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-    </nav>
+<nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
+    <a class="navbar-brand" href="#">FlightSurety</a>
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarsExampleDefault"
+            aria-controls="navbarsExampleDefault" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+    </button>
+</nav>
 
-    <main class="container">
+<main class="container">
+    <div id="display-wrapper" class="top-20">
+    </div>
+    <div class="row top-20">
+        <label class="form">Flight</label> <input type="text" id="flight-number">
+        <btn class="btn btn-primary" id="submit-oracle">Submit to Oracles</btn>
+    </div>
 
-        <div id="display-wrapper" class="top-20">
+    <h2>Insure Flight</h2>
+
+    <div class="row top-20">
+        <input type="text" id="flight-name" placeholder="Flight Name" style="width: 300px;">
+    </div>
+
+    <div class="row top-20">
+        <input type="text" id="insurance-airline-address" placeholder="Airline Address" style="width: 300px;">
+    </div>
+
+    <div class="row top-20">
+        <input type="text" id="flight-timestamp" placeholder="Timestamp (20311828)" style="width: 300px;">
+    </div>
+
+    <div class="row top-20">
+        <input type="text" id="insurance-amount" placeholder="1 ETH limit" style="width: 300px;">
+    </div>
+    <div class="row top-20">
+        <btn class="btn btn-primary" id="flight-status" style="margin-right: 10px;">Get Flight Status</btn>
+        <btn class="btn btn-primary" id="buy-insurance">Buy</btn>
+    </div>
+
+    <div style="margin-top: 30px;">
+        <h5>Results:</h5>
+        <div id="display-wrapper-buy">
+
         </div>
-        <div class="row top-20">
-            <label class="form">Flight</label> <input type="text" id="flight-number"> <btn class="btn btn-primary" id="submit-oracle">Submit to Oracles</btn>
-        </div>
-    </main>
+    </div>
+    <h2>Passenger Detail</h2>
 
+    <div class="row top-20">
+        <label class="form">Check Balance</label>
+        <input type="text" id="passenger-address" placeholder="Passenger Address" style="width: 300px;">
+        <btn class="btn btn-primary" id="check-credit">Check Credit</btn>
+        <btn class="btn btn-primary" id="withdraw-credit" style="margin-left: 10px;">Withdraw</btn>
+    </div>
+
+    <div style="margin-top: 30px;">
+        <h5>Results:</h5>
+        <div id="display-wrapper-passenger-detail">
+
+        </div>
+    </div>
+</main>
 </body>
-
 </html>

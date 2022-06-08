@@ -11,7 +11,7 @@ contract FlightSuretyData {
 
     address private contractOwner;                                      // Account used to deploy contract
     bool private operational = true;                                    // Blocks all state changes throughout the contract if false
-    mapping(address => uint256) private authorizedContracts;
+    mapping(address => bool) private authorizedContracts;
 
     struct Airline {
         address airlineAddress;
@@ -23,6 +23,8 @@ contract FlightSuretyData {
 
     mapping(address => Airline) private airlines;
     address[] registeredAirlines = new address[](0);
+    mapping(address => address[]) public registeredAirlineMultiCalls;
+
 
     struct Flight {
         bool isRegistered;
@@ -107,11 +109,6 @@ contract FlightSuretyData {
         _;
     }
 
-    modifier hasFundedEnough(){
-        require(msg.value >= 10 ether, "10 eth required to register airline");
-        _;
-    }
-
     modifier tooMuchInsurance() {
         require(msg.value < 5 ether, "Payment exceeds insurance limit");
         _;
@@ -128,7 +125,19 @@ contract FlightSuretyData {
     }
 
     modifier requireWhitelistedAddress(){
-        require(whitelistedAddresses[msg.sender] = true);
+        require(whitelistedAddresses[msg.sender] = true || msg.sender == contractOwner, "Unauthorized action");
+        _;
+    }
+
+    modifier hasntAlreadyVoted(address pendingAirline){
+        address[] memory voters = registeredAirlineMultiCalls[pendingAirline];
+        bool found = false;
+        for(uint i; i<voters.length; i++) {
+            if(msg.sender == voters[i]){
+                found = true;
+            }
+        }
+        require(found == false);
         _;
     }
 
@@ -145,16 +154,16 @@ contract FlightSuretyData {
         return operational;
     }
 
-    function setOperationalStatus(bool mode) requireWhitelistedAddress private returns (bool) {
+    function setOperatingStatus(bool mode) requireWhitelistedAddress public returns (bool) {
         operational = mode;
         return operational;
     }
 
-    function addWhitelistAddress(address addressToAdd) requireContractOwner private {
+    function addWhitelistAddress(address addressToAdd) requireContractOwner public {
         whitelistedAddresses[addressToAdd] = true;
     }
 
-    function removeWhitelistAddress(address addressToRemove) requireContractOwner private {
+    function removeWhitelistAddress(address addressToRemove) requireContractOwner public {
         whitelistedAddresses[addressToRemove] = false;
     }
 
@@ -166,6 +175,19 @@ contract FlightSuretyData {
         return airlines[airlineAddress].isRegistered;
     }
 
+    function authorizeCaller (address appContract) public {
+        authorizedContracts[appContract] = true;
+    }
+
+    function getRegisteredAirlineMultiCallsArray(address airline) public view returns(address[]){
+        return registeredAirlineMultiCalls[airline];
+    }
+
+    function getPassengerCredit(address passenger) view returns(uint256) {
+        return creditedPassengers[passenger];
+    }
+
+
     /********************************************************************************************/
     /*                                     SMART CONTRACT FUNCTIONS                             */
     /********************************************************************************************/
@@ -175,7 +197,7 @@ contract FlightSuretyData {
     *      Can only be called from FlightSuretyApp contract
     */
     function registerAirline(string airlineName, address airlineAddress)
-    requireIsOperational airlineNotRegistered(airlineAddress) validAddress(msg.sender) hasFundedEnough external payable returns (bool registered){
+    requireIsOperational airlineNotRegistered(airlineAddress) validAddress(msg.sender) external returns (bool registered){
         airlines[airlineAddress] = Airline({
             airlineAddress: airlineAddress,
             isRegistered: true,
@@ -184,6 +206,7 @@ contract FlightSuretyData {
             votes: 0
         });
         registeredAirlines.push(airlineAddress);
+        registeredAirlineMultiCalls[airlineAddress];
 
         emit AirlineRegistered(airlineName, airlineAddress);
         return true;
@@ -222,14 +245,14 @@ contract FlightSuretyData {
      * @dev Buy insurance for a flight
     *
     */
-    function buy(string flight, uint256 timestamp, address airline, address passenger)
+    function buy(string flight, uint256 timestamp, address airline, address passenger, uint256 value)
     requireIsOperational messageValueGreaterThanZero tooMuchInsurance external payable {
         bytes32 flightKey = getFlightKey(airline, flight, timestamp);
-        uint256 payoutAmount = msg.value.mul(2); //payout is always 100% more
+        uint256 payoutAmount = value.mul(2); //payout is always 2x more
 
         insuredPassengersOnFlight[flightKey].push(Insurance({
             passenger: passenger,
-            cost: msg.value,
+            cost: value,
             payoutAmount: payoutAmount,
             isCredited: false
         }));
@@ -262,6 +285,10 @@ contract FlightSuretyData {
         creditedPassengers[passenger] = 0;
         passenger.transfer(credits);
         emit CreditsWithdrawn(credits, passenger);
+    }
+
+    function vote(address airlineAddress) hasntAlreadyVoted(msg.sender) external {
+        airlines[airlineAddress].votes++;
     }
 
    /**

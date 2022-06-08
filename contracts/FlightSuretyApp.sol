@@ -6,8 +6,6 @@ pragma solidity ^0.4.24;
 
 import "../node_modules/openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "./FlightSuretyData.sol";
-import "./FlightSuretyData.sol";
-import "./FlightSuretyData.sol";
 
 /************************************************** */
 /* FlightSurety Smart Contract                      */
@@ -31,9 +29,6 @@ contract FlightSuretyApp {
 
     address private contractOwner;          // Account used to deploy contract
     bool operational;
-
-    mapping(address => address[]) private registeredAirlineMultiCalls;
-
 
     /********************************************************************************************/
     /*                                       FUNCTION MODIFIERS                                 */
@@ -62,6 +57,24 @@ contract FlightSuretyApp {
         _;
     }
 
+    modifier hasFundedEnough(){
+        require(msg.value >= 10 ether, "10 eth required to register airline");
+        _;
+    }
+
+    modifier requireRegisteredAirline(){
+        address[] memory registeredAirlines = this.getRegisteredAirlines();
+        bool found = false;
+        for(uint i; i<registeredAirlines.length; i++) {
+            if(msg.sender == registeredAirlines[i]){
+                found = true;
+            }
+        }
+        require(found);
+        _;
+    }
+
+
     /********************************************************************************************/
     /*                                       CONSTRUCTOR                                        */
     /********************************************************************************************/
@@ -88,28 +101,47 @@ contract FlightSuretyApp {
         return operational;
     }
 
+    function getRegisteredAirlineMultiCalls(address airline) public view returns(address[]){
+        return flightSuretyData.getRegisteredAirlineMultiCallsArray(airline);
+    }
+
+    function isAirlineRegistered(address airline) public view returns (bool) {
+        return flightSuretyData.isAirlineRegistered(airline);
+    }
+
     /********************************************************************************************/
     /*                                     SMART CONTRACT FUNCTIONS                             */
     /********************************************************************************************/
 
+    function buy(string flight, uint256 timestamp, address airline) requireIsOperational payable public{
+        flightSuretyData.buy(flight, timestamp, airline, msg.sender, msg.value);
+    }
 
+    function getPassengerCredit(address passengerAddress) view public returns (uint256){
+        return flightSuretyData.getPassengerCredit(passengerAddress);
+    }
+
+    function withdrawPassengerCredits(address passengerAddress) public {
+        require(passengerAddress != address(0), "Provide valid address");
+        return flightSuretyData.pay(passengerAddress);
+    }
     /**
-     * @dev Add an airline to the registration queue
+     * @dev Register an airline
     *
     */
 
     //All registered airlines count as potential voters, a new airline will need half of the votes to enter
-    function registerAirline(string name, address airlineAddress) requireIsOperational external returns (bool success, uint256 votes){
+    function registerAirline(string name, address airlineAddress) requireIsOperational hasFundedEnough external payable
+    returns (bool){
         bool isRegistered = false;
         address[] memory registeredAirlines = flightSuretyData.getRegisteredAirlines();
         if (registeredAirlines.length < 5 && flightSuretyData.isAirlineRegistered(msg.sender)) {
             isRegistered = flightSuretyData.registerAirline(name, airlineAddress);
-        } else if (registeredAirlines.length.div(2) >= votes){
+        } else if (registeredAirlines.length.div(2) <= getRegisteredAirlineMultiCalls(airlineAddress).length){
             //require multiparty consensus for more than 5 airlines registered
             isRegistered = flightSuretyData.registerAirline(name, airlineAddress);
         }
-
-        return (isRegistered, 0);
+        return isRegistered;
     }
 
 
@@ -138,6 +170,10 @@ contract FlightSuretyApp {
         bytes32 key = keccak256(abi.encodePacked(index, airline, flight, timestamp));
         oracleResponses[key] = ResponseInfo({requester : msg.sender, isOpen : true});
         emit OracleRequest(index, airline, flight, timestamp);
+    }
+
+    function airlineVote(address airlineAddress) requireRegisteredAirline public {
+        flightSuretyData.vote(airlineAddress);
     }
 
 

@@ -4,7 +4,6 @@ import Web3 from 'web3';
 
 export default class Contract {
     constructor(network, callback) {
-
         let config = Config[network];
         this.web3 = new Web3(new Web3.providers.HttpProvider(config.url));
         this.flightSuretyApp = new this.web3.eth.Contract(FlightSuretyApp.abi, config.appAddress);
@@ -16,11 +15,11 @@ export default class Contract {
 
     initialize(callback) {
         this.web3.eth.getAccounts((error, accts) => {
-           
+
             this.owner = accts[0];
 
             let counter = 1;
-            
+
             while(this.airlines.length < 5) {
                 this.airlines.push(accts[counter++]);
             }
@@ -46,11 +45,47 @@ export default class Contract {
             airline: self.airlines[0],
             flight: flight,
             timestamp: Math.floor(Date.now() / 1000)
-        } 
+        }
         self.flightSuretyApp.methods
             .fetchFlightStatus(payload.airline, payload.flight, payload.timestamp)
-            .send({ from: self.owner}, (error, result) => {
-                callback(error, payload);
+            .send({ from: self.owner}, callback);
+    }
+
+    registerAirline(airlineName, airlineAddress, callback) {
+        let self = this;
+        self.flightSuretyApp.methods
+            .registerAirline(airlineName, airlineAddress)
+            .send({ from: self.owner, gas: 6721900 }, callback);
+    }
+
+    isAirlineRegistered(airlineAddress, callback) {
+        let self = this;
+        self.flightSuretyApp.methods
+            .isAirlineRegistered(airlineAddress)
+            .call({ from: self.owner }, callback);
+    }
+
+    buy(flightName, airlineAddress, timestamp, amount, callback) {
+        let self = this;
+        const insuredAmount = this.web3.utils.toWei(amount, 'ether');
+        self.flightSuretyApp.methods
+            .buy(flightName, airlineAddress, timestamp)
+            .send({ from: self.owner, gas: 6721900, value: insuredAmount }, callback);
+    }
+
+    getPassengerCredit(passengerAddress, callback) {
+        let self = this;
+        self.flightSuretyApp.methods
+            .getPassengerCredit(passengerAddress)
+            .call({ from: self.owner }, callback);
+    }
+
+    withdrawCredits(passengerAddress, callback) {
+        let self = this;
+        self.flightSuretyApp.methods
+            .withdrawCredits(passengerAddress)
+            .send({ from: self.owner }, (error, result) => {
+                callback(error, result);
             });
     }
 }
